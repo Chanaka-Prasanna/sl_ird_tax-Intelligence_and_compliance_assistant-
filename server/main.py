@@ -1,9 +1,23 @@
+from langchain_core.runnables import RunnableConfig
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from ingestion import ingest_pdfs
-from tools import retriever_tool
-
+from graph import graph
 app = FastAPI()
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Next.js default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class ChatRequest(BaseModel):
+    message: str
+    thread_id: str = "1"
 
 @app.get("/")
 async def root():
@@ -20,7 +34,17 @@ async def ingest():
     return {"message": f"Ingested {doc_lengths} document splits."}
 
 
-@app.get("/chat")
-async def chat(query: str):
-    result = retriever_tool.invoke({"query": query})
-    return {"result": result}
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
+    result = graph.invoke({"messages": [{"role": "user", "content": request.message}]}, config=config)
+    
+    # Extract the last AI message
+    messages = result.get("messages", [])
+    ai_response = ""
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and msg.content:
+            ai_response = msg.content
+            break
+    
+    return {"response": ai_response}
