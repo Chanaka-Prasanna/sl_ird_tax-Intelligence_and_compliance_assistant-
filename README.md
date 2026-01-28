@@ -114,6 +114,8 @@ The main chat interface where users can ask questions about tax documents.
 - Markdown-formatted responses
 - Citation links to source documents
 - Session-based conversation history
+- Automatic conversation summarization for long conversations (>6 messages)
+- Memory-efficient context management
 
 **How to use:**
 
@@ -239,54 +241,74 @@ Invoke-RestMethod -Uri "http://localhost:8000/chat" `
 ### Flow Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User Query                              │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  generate_query_or_respond                      │
-│         (Decide: retrieve documents OR respond directly)        │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-              ┌─────────────────┴─────────────────┐
-              │                                   │
-              ▼                                   ▼
-┌──────────────────────┐              ┌───────────────────────────┐
-│    Direct Response   │              │    retrieve (ToolNode)    │
-│        (END)         │              │   - Query expansion       │
-└──────────────────────┘              │   - Vector search         │
-                                      └───────────────────────────┘
-                                                  │
-                                                  ▼
-                                      ┌───────────────────────────┐
-                                      │      grade_documents      │
-                                      │   (Relevant? yes/no)      │
-                                      └───────────────────────────┘
-                                                  │
-                                ┌─────────────────┴─────────────────┐
-                                │                                   │
-                                ▼                                   ▼
-                    ┌───────────────────┐             ┌─────────────────────┐
-                    │  generate_answer  │             │  rewrite_question   │
-                    │  (Structured RAG) │             │  (Improve query)    │
-                    └───────────────────┘             └─────────────────────┘
-                                │                                   │
-                                ▼                                   │
-                    ┌───────────────────┐                           │
-                    │       END         │◄──────────────────────────┘
-                    └───────────────────┘         (retry with new query)
+                    ┌─────────────────────────────────────────┐
+                    │           User Query                    │
+                    └─────────────────────────────────────────┘
+                                      │
+        ┌─────────────────────────────┼─────────────────────────────┐
+        │                             ▼                             │
+        │         ┌──────────────────────────────────────────┐      │
+        │         │     generate_query_or_respond            │      │
+        │         │  (Decide: retrieve OR respond)           │◄─────┘
+        │         │  (Includes summary if available)         │  (from rewrite)
+        │         └──────────────────────────────────────────┘
+        │                             │
+        │           ┌─────────────────┴─────────────────┐
+        │           │                                   │
+        │           ▼                                   ▼
+        │  ┌─────────────────┐            ┌─────────────────────────┐
+        │  │ Direct Response │            │   retrieve (ToolNode)   │
+        │  │     (END)       │            │  - Query expansion      │
+        │  └─────────────────┘            │  - Vector search        │
+        │                                 └─────────────────────────┘
+        │                                             │
+        │                                             ▼
+        │                                 ┌─────────────────────────┐
+        │                                 │   grade_documents       │
+        │                                 │  (Relevant? yes/no)     │
+        │                                 └─────────────────────────┘
+        │                                             │
+        │                       ┌─────────────────────┴─────────────────────┐
+        │                       │                                           │
+        │                       ▼                                           ▼
+        │           ┌─────────────────────┐                   ┌──────────────────────┐
+        │           │  generate_answer    │                   │  rewrite_question    │
+        │           │  (Structured RAG)   │                   │  (Improve query)     │
+        │           └─────────────────────┘                   └──────────────────────┘
+        │                       │                                           │
+        │                       ▼                                           │
+        │           ┌─────────────────────────┐                             │
+        │           │   should_summarize      │                             │
+        │           │  (>6 messages? yes/no)  │                             │
+        │           └─────────────────────────┘                             │
+        │                       │                                           │
+        │           ┌───────────┴───────────┐                               │
+        │           │                       │                               │
+        │           ▼                       ▼                               │
+        │  ┌──────────────────────┐  ┌────────────┐                        │
+        │  │ summarize_conversation   │     END    │                        │
+        │  │ (Create/extend summary)  └────────────┘                        │
+        │  │ (Remove old messages) │                                        │
+        │  └──────────────────────┘                                         │
+        │           │                                                       │
+        │           ▼                                                       │
+        │     ┌────────────┐                                                │
+        │     │    END     │                                                │
+        │     └────────────┘                                                │
+        │                                                                   │
+        └───────────────────────────────────────────────────────────────────┘
 ```
 
 ### Node Descriptions
 
-| Node                        | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `generate_query_or_respond` | Decides whether to search documents or respond directly      |
-| `retrieve`                  | Searches ChromaDB with query expansion for tax acronyms      |
-| `grade_documents`           | Checks if retrieved documents are relevant to the question   |
-| `generate_answer`           | Creates structured response with citations                   |
-| `rewrite_question`          | Improves the query and retries if documents are not relevant |
+| Node                        | Description                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `generate_query_or_respond` | Decides whether to search documents or respond directly. Includes conversation summary in context if available.  |
+| `retrieve`                  | Searches ChromaDB with query expansion for tax acronyms                                                          |
+| `grade_documents`           | Checks if retrieved documents are relevant to the question                                                       |
+| `generate_answer`           | Creates structured response with citations                                                                       |
+| `rewrite_question`          | Improves the query and retries if documents are not relevant                                                     |
+| `summarize_conversation`    | Creates/extends conversation summary when message count exceeds 6, removes older messages to manage context size |
 
 ---
 
@@ -332,6 +354,31 @@ Answers include:
 - Inline citations `[1]`, `[2]`
 - Source list with document name, URL, page number, and section
 - Disclaimer about professional tax advice
+
+### Conversation Memory Management
+
+The system automatically manages long conversations:
+
+**Automatic Summarization:**
+
+- When a conversation exceeds 6 messages, the system creates a summary
+- Summary captures key questions, topics, and information discussed
+- Older messages are removed while preserving the last 2 for immediate context
+- Summaries are extended (not recreated) as conversations continue
+
+**Benefits:**
+
+- **Cost efficiency:** Reduces token usage in long conversations
+- **Performance:** Faster response times with smaller context windows
+- **Context preservation:** Maintains conversation history without keeping all messages
+- **Seamless UX:** Automatic process, no user intervention required
+
+**Example:**
+
+```
+Message 1-6: Full conversation history maintained
+Message 7+:  Summary + last 2 messages kept, older messages removed
+```
 
 ---
 

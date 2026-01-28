@@ -118,6 +118,37 @@ After retrieval, `grade_documents` checks relevance before generation.
 - **Query refinement:** Triggers rewrite if initial retrieval fails
 - **Quality assurance:** Acts as a guard before expensive generation step
 
+#### **Conversation Summarization**
+
+When conversations exceed 6 messages, the system automatically creates/extends a summary and removes older messages.
+
+**Rationale:**
+
+- **Token management:** Long conversations can exceed context limits and increase costs
+- **Context preservation:** Summary maintains conversation history without keeping all messages
+- **Performance optimization:** Reduces latency by limiting message history size
+- **Incremental updates:** Existing summaries are extended rather than recreated
+- **Recent context retention:** Keeps last 2 messages for immediate context while summarizing the rest
+
+**Implementation:**
+
+```python
+class State(MessagesState):
+    summary: str  # Stores conversation summary
+
+def summarize_conversation(state: State):
+    # Create or extend summary
+    # Remove old messages (keep last 2)
+    # Return updated state with summary
+```
+
+**Flow:**
+
+```
+generate_answer → should_summarize → (if >6 messages) → summarize_conversation → END
+                                    → (else) → END
+```
+
 ---
 
 ### 2.3 Query Optimization
@@ -294,6 +325,23 @@ Long prompt rules for extracting sections from documents.
 - **Development simplicity:** No database setup required for demos
 - **Fast iteration:** Instant startup without persistence overhead
 - **Stateless deployment:** Can be replaced with Redis/Postgres for production
+
+### 4.5 Conversation Summarization Strategy
+
+**Trigger:** Automatically activates when message count exceeds 6.
+
+**Rationale:**
+
+- **Balance:** 6 messages typically represent 3 user questions and 3 AI responses—enough context for follow-ups without overwhelming the model
+- **Cost efficiency:** Prevents exponential token growth in long conversations
+- **Summary-first approach:** New messages are prepended with summary as system message, providing compressed context
+- **Graceful degradation:** Even if summary loses some nuance, recent 2 messages preserve immediate context
+
+**Why not filter/trim only?**
+
+- **Information loss:** Simple trimming discards conversation history entirely
+- **Context breaks:** User references to earlier topics would be lost
+- **Better UX:** Summaries allow the system to remember what was discussed earlier
 
 ---
 
