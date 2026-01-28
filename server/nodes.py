@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 from langgraph.graph import MessagesState
 from pydantic import BaseModel, Field
-from typing import Literal
-from langchain.messages import HumanMessage
+from typing import Literal, List
+from langchain.messages import HumanMessage, AIMessage
 from langchain.chat_models import init_chat_model
 from tools import retriever_tool
 
@@ -39,52 +39,52 @@ GENERATE_PROMPT = (
     "Provide a comprehensive and descriptive answer with sufficient detail to fully address the user's query. "
     "Include relevant examples, explanations, and specific details from the context. "
     "Adjust the length and depth of your answer based on the complexity of the question.\n\n"
-    "CITATION USAGE RULES IN YOUR ANSWER:\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "✓ CORRECT: 'The following rates apply [1]:'\n"
-    "  - Rate 1\n"
-    "  - Rate 2\n"
-    "  - Rate 3\n\n"
-    "✗ WRONG: DO NOT DO THIS:\n"
-    "  - Rate 1 [1]\n"
-    "  - Rate 2 [1]\n"
-    "  - Rate 3 [1]\n\n"
-    "RULE: Place citations ONLY at section headings or topic introductions, NEVER after individual list items.\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    "Question: {question} \n\n"
+    "CITATION USAGE IN ANSWER:\n"
+    "- Use inline citation numbers (e.g., [1], [2]) ONLY at section headings or when introducing a topic\n"
+    "- DO NOT add citations after every list item\n"
+    "- When presenting a list from the same source, cite once in the heading\n"
+    "- Example: 'The following rates apply [1]:' then list items without individual citations\n\n"
+    "Question: {question}\n\n"
     "Context: {context}\n\n"
-    "══════════════════════════════════════════════\n"
-    "SOURCES SECTION FORMATTING (CRITICAL)\n"
-    "══════════════════════════════════════════════\n\n"
-    "After your answer, create a sources section using this EXACT format:\n\n"
-    "**Sources:**\n\n"
-    "[1]- [Document Name](actual_url_here) - Page X - Section Title\n\n"
-    "[2]- [Document Name](actual_url_here) - Page Y - Section Title\n\n"
-    "FORMAT RULES:\n"
-    "• Start with [number]- (bracket number bracket dash)\n"
-    "• Document name must be clickable: [Document Name](url)\n"
-    "• Use single dash - between elements\n"
-    "• Format: [X]- [Name](url) - Page Y - Section (Section is optional)\n"
-    "• Each citation on a new line with blank line after it\n"
-    "• NO duplicates - each unique source listed only once\n\n"
-    "EXAMPLE:\n"
-    "[1]- [Tax Guide 2023](https://ird.gov.lk/tax2023.pdf) - Page 15 - 12.2 Company Tax Rates\n\n"
-    "[2]- [Corporate Tax Manual](https://ird.gov.lk/manual.pdf) - Page 42\n\n"
-    "Instructions for creating citations:\n"
-    "1. Extract 'source_url' from metadata - use this as the clickable URL\n"
-    "2. Extract clean document name from 'source' metadata (remove path and .pdf extension)\n"
-    "3. Extract page number from metadata\n"
-    "4. Extract EXACT section title from document context (optional if not clear)\n"
-    "5. Include section numbers if present (e.g., '12.2 Company Tax Rates')\n"
-    "6. Each citation must be UNIQUE - check for duplicates before listing\n"
-    "7. Put a blank line after EACH citation\n\n"
-    "VERIFICATION CHECKLIST:\n"
-    "□ Are citations only at headings, NOT on every list item?\n"
-    "□ Is format [X]- [Name](url) - Page Y - Section?\n"
-    "□ Is document name clickable with actual URL?\n"
-    "□ Is each citation on its own line with blank line after?\n"
-    "□ Are all sources unique with NO duplicates?\n\n"
-    "MANDATORY DISCLAIMER: End your response with:\n"
+    "SOURCES EXTRACTION:\n"
+    "For each unique source you reference:\n"
+    "1. Extract 'source' from metadata and clean it (remove path, remove .pdf extension)\n"
+    "2. Extract 'source_url' from metadata (the actual URL)\n"
+    "3. Extract 'page' number from metadata\n"
+    "4. Extract the section from document BODY CONTENT ONLY:\n"
+    "   \n"
+    "   STRICT RULES FOR SECTION EXTRACTION:\n"
+    "   ════════════════════════════════════\n"
+    "   ✓ ONLY extract sections that appear in the MAIN BODY of the content\n"
+    "   ✓ Look for NUMBERED sections: '12.2', '12.3', '4.1', '13', '2.5.1'\n"
+    "   ✓ Look for TOPICAL HEADINGS that introduce specific topics\n"
+    "   ✓ Extract the FIRST few words after the section number (e.g., '12.2 For the second six months period')\n"
+    "   \n"
+    "   ✗ NEVER extract:\n"
+    "   • Page headers (text that appears at top of page repeatedly)\n"
+    "   • Page footers (text at bottom of page)\n"
+    "   • Document titles (e.g., 'GUIDE TO CORPORATE RETURN OF INCOME TAX')\n"
+    "   • Document codes (e.g., 'PN/IT/2025-01', 'SET_25_26')\n"
+    "   • Year references (e.g., 'YEAR OF ASSESSMENT – 2022/2023')\n"
+    "   • Text that looks like a title bar or document identifier\n"
+    "   \n"
+    "   EXAMPLE OF CORRECT EXTRACTION:\n"
+    "   From: '12.2 For the second six months period (from 01.10.2022 to 31.032023) of the year...'\n"
+    "   Extract: '12.2 For the second six months period'\n"
+    "   \n"
+    "   From: '13. Payment of tax'\n"
+    "   Extract: '13. Payment of tax' or just '13'\n"
+    "   \n"
+    "   EXAMPLE OF WRONG EXTRACTION:\n"
+    "   DON'T extract: 'GUIDE TO CORPORATE RETURN OF INCOME TAX- YEAR OF ASSESSMENT – 2022/2023'\n"
+    "   This is a page header/document title, NOT a section!\n"
+    "   \n"
+    "   If you cannot find a clear section heading in the actual content, leave the section field empty.\n"
+    "5. NO DUPLICATES - each unique source (document + page + section) should appear only once\n\n"
+    "Return your response as:\n"
+    "- content: Your answer in markdown format with inline citations [1], [2], etc.\n"
+    "- sources: List of Source objects with document_name, source_url, page_number, section\n\n"
+    "Add this disclaimer at the end of your content:\n"
     "---\n"
     "*Disclaimer: This response is based solely on IRD-published documents and is not professional tax advice. "
     "Please consult a qualified tax professional for personalized guidance.*"
@@ -96,6 +96,18 @@ class GradeDocuments(BaseModel):
     binary_score: str = Field(
         description="Relevance score: 'yes' if relevant, or 'no' if not relevant"
     )
+
+class Source(BaseModel):
+    """A single source citation."""
+    document_name: str = Field(description="Clean document name without path or extension")
+    source_url: str = Field(description="The actual URL from metadata")
+    page_number: int = Field(description="Page number from metadata")
+    section: str = Field(description="Section number (e.g., '12.3'), section title, or both together (e.g., '12.3 Company Tax Rates'). Leave empty if not clear.")
+
+class StructuredAnswer(BaseModel):
+    """Structured answer with content and sources."""
+    content: str = Field(description="The main answer content in markdown format")
+    sources: List[Source] = Field(description="List of unique sources used, no duplicates")
 
 
 
@@ -144,12 +156,36 @@ def rewrite_question(state: MessagesState):
     return {"messages": [HumanMessage(content=response.content)]}
 
 def generate_answer(state: MessagesState):
-    """Generate an answer."""
+    """Generate an answer with structured output."""
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
     context = messages[-1].content
     prompt = GENERATE_PROMPT.format(question=question, context=context)
-    response = model.invoke([{"role": "user", "content": prompt}])
-    return {"messages": [response]}
+    
+    structured_response = model.with_structured_output(StructuredAnswer).invoke([{"role": "user", "content": prompt}])
+    
+    formatted_content = structured_response.content + "\n\n**Sources:**\n\n"
+    
+    seen_sources = set()
+    formatted_sources = []
+    
+    for idx, source in enumerate(structured_response.sources, 1):
+        source_key = (source.document_name, source.page_number, source.section)
+        
+        if source_key not in seen_sources:
+            seen_sources.add(source_key)
+            
+            if source.section:
+                formatted_sources.append(
+                    f"[{idx}]- [{source.document_name}]({source.source_url}) - Page {source.page_number} - {source.section}\n"
+                )
+            else:
+                formatted_sources.append(
+                    f"[{idx}]- [{source.document_name}]({source.source_url}) - Page {source.page_number}\n"
+                )
+    
+    formatted_content += "\n".join(formatted_sources)
+    
+    return {"messages": [AIMessage(content=formatted_content)]}
 
 
