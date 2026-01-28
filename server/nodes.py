@@ -1,13 +1,19 @@
 from dotenv import load_dotenv
 from langgraph.graph import MessagesState
+from langchain_core.messages import RemoveMessage
 from pydantic import BaseModel, Field
 from typing import Literal, List
-from langchain.messages import HumanMessage, AIMessage
+from langchain.messages import HumanMessage, AIMessage, SystemMessage
 from langchain.chat_models import init_chat_model
 from tools import retriever_tool
 
 load_dotenv()
 model = init_chat_model("google_genai:gemini-2.5-flash-lite", temperature=0)
+
+
+# Custom state with summary support for long conversations
+class State(MessagesState):
+    summary: str
 
 GRADE_PROMPT = (
     "You are a grader assessing relevance of a retrieved document to a user question. \n "
@@ -141,11 +147,18 @@ class StructuredAnswer(BaseModel):
 
 load_dotenv()
 
-def generate_query_or_respond(state: MessagesState):
+def generate_query_or_respond(state: State):
     """Call the model to generate a response based on the current state. Given
     the question, it will decide to retrieve using the retriever tool, or simply respond to the user.
+    Incorporates conversation summary if it exists.
     """
     messages = state["messages"].copy()
+    
+    # Get summary if it exists and prepend as system message
+    summary = state.get("summary", "")
+    if summary:
+        system_message = SystemMessage(content=f"Summary of conversation earlier: {summary}")
+        messages = [system_message] + messages
     
     # Check if the last message is an AIMessage (from rewrite_question node)
     last_message = messages[-1] if messages else None
@@ -173,7 +186,7 @@ def generate_query_or_respond(state: MessagesState):
 
 
 def grade_documents(
-    state: MessagesState,
+    state: State,
 ) -> Literal["generate_answer", "rewrite_question"]:
     """Determine whether the retrieved documents are relevant to the question."""
     messages = state["messages"]
@@ -196,7 +209,7 @@ def grade_documents(
         return "rewrite_question"
     
 
-def rewrite_question(state: MessagesState):
+def rewrite_question(state: State):
     """Rewrite the original user question."""
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
@@ -207,7 +220,7 @@ def rewrite_question(state: MessagesState):
     # Return as AIMessage so generate_query_or_respond can detect this is from internal node
     return {"messages": [AIMessage(content=response.content)]}
 
-def generate_answer(state: MessagesState):
+def generate_answer(state: State):
     """Generate an answer with structured output."""
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
@@ -240,5 +253,58 @@ def generate_answer(state: MessagesState):
     formatted_content += "\n".join(formatted_sources)
     
     return {"messages": [AIMessage(content=formatted_content)]}
+
+
+# ===================== CONVERSATION SUMMARIZATION =====================
+
+SUMMARIZE_PROMPT = (
+    "You are summarizing a conversation about tax regulations and compliance. "
+    "Focus on key questions asked, important tax topics discussed, and any specific "
+    "information provided. Keep the summary concise but comprehensive enough to "
+    "maintain context for future questions."
+)
+
+def summarize_conversation(state: State):
+    """Summarize the conversation when it gets too long.
+    Creates or extends an existing summary and removes older messages to manage context.
+    """
+    # Get any existing summary
+    summary = state.get("summary", "")
+    
+    # Create summarization prompt
+    if summary:
+        summary_message = (
+            f"This is the summary of the conversation so far: {summary}\n\n"
+            "Extend the summary by taking into account the new messages above. "
+            "Focus on tax-related questions, answers, and any important details discussed:"
+        )
+    else:
+        summary_message = (
+            "Create a summary of the conversation above. "
+            "Focus on tax-related questions, answers, and any important details discussed:"
+        )
+    
+    # Add prompt to messages
+    messages = state["messages"] + [HumanMessage(content=summary_message)]
+    response = model.invoke(messages)
+    
+    # Delete all but the 2 most recent messages to maintain some context
+    delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
+    
+    return {"summary": response.content, "messages": delete_messages}
+
+
+def should_summarize(state: State) -> Literal["summarize_conversation", "__end__"]:
+    """Determine whether to summarize the conversation based on message count.
+    If there are more than 6 messages, trigger summarization.
+    """
+    messages = state["messages"]
+    
+    # If there are more than 6 messages, summarize the conversation
+    if len(messages) > 6:
+        return "summarize_conversation"
+    
+    # Otherwise, just end
+    return "__end__"
 
 
