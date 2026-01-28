@@ -1,8 +1,14 @@
 from langchain.tools import tool
-from ingestion import vector_store
+from services import get_vector_store
 import os
 
-retriever = vector_store.as_retriever()
+_vector_store = None
+
+def get_retriever():
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = get_vector_store()
+    return _vector_store.store.as_retriever()
 
 
 
@@ -17,6 +23,7 @@ def retrive_documents(query: str) -> str:
     Returns:
         str: Retrieved documents as a string.
     """
+    retriever = get_retriever()
     docs = retriever.invoke(query)
 
     # combine documents with metadata
