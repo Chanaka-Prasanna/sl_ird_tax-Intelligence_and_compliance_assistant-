@@ -29,9 +29,17 @@ GENERATE_PROMPT = (
     "You are an assistant for question-answering tasks. "
     "Use the following pieces of retrieved context to answer the question. "
     "If you don't know the answer, just say that you don't know. "
-    "Use three sentences maximum and keep the answer concise.\n"
-    "Question: {question} \n"
-    "Context: {context}"
+    "Use three sentences maximum and keep the answer concise.\n\n"
+    "Question: {question} \n\n"
+    "Context: {context}\n\n"
+    "IMPORTANT: At the end of your answer, provide citations in markdown format.\n"
+    "For each citation, create a clickable link using this exact format:\n"
+    "• Source: [Document Name](actual_url_here) – Page X\n\n"
+    "Extract the 'source_url' value from the metadata and use it as the actual URL in the markdown link.\n"
+    "Example: If source is 'Tax Guide' and source_url is 'https://example.com/tax.pdf', write:\n"
+    "• Source: [Tax Guide](https://example.com/tax.pdf) – Page 5\n\n"
+    "DO NOT write (source_url) literally - use the ACTUAL URL value from the metadata.\n"
+    "Format your entire answer in markdown with proper clickable links."
 )
 
 class GradeDocuments(BaseModel):  

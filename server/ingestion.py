@@ -13,29 +13,32 @@ vector_store = Chroma(
         persist_directory="./chroma_db", 
 )
 
-def load_pdfs(file_paths):
+def load_pdfs(file_paths_with_urls):
     """
-    Load and return documents from a list of PDF file paths.
+    Load and return documents from a list of PDF file paths with their source URLs.
     Args:
-        files (list): List of PDF file paths.
+        file_paths_with_urls (dict): Dictionary mapping file paths to their source URLs.
     Returns:
         list: List of loaded documents.
     """
     all_docs = []
-    for file_path in file_paths:
+    for file_path, source_url in file_paths_with_urls.items():
         loader = PyMuPDFLoader(file_path, mode='page')
         docs = loader.load()
+        # Add source URL to metadata
+        for doc in docs:
+            doc.metadata['source_url'] = source_url
         all_docs.extend(docs)
     return all_docs
 
-def ingest_pdfs(file_paths):
+def ingest_pdfs(file_paths_with_urls):
     """
-    Add data to the vector store from a list of PDF file paths.
+    Add data to the vector store from a dictionary of PDF file paths with their source URLs.
     
-    :param file_paths: Description
+    :param file_paths_with_urls: Dictionary mapping file paths to their source URLs
     """
 
-    docs = load_pdfs(file_paths)
+    docs = load_pdfs(file_paths_with_urls)
 
     text_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
         chunk_size= 250,

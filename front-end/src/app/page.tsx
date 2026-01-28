@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -11,6 +12,9 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [threadId] = useState(
+    () => `session_${Date.now()}_${Math.random().toString(36).substring(7)}`
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -47,7 +51,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           message: input,
-          thread_id: "1",
+          thread_id: threadId,
         }),
       });
 
@@ -105,9 +109,36 @@ export default function Home() {
                       : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words">
-                    {message.content}
-                  </p>
+                  {message.role === "assistant" ? (
+                    <ReactMarkdown
+                      className="prose prose-sm dark:prose-invert max-w-none markdown-content"
+                      components={{
+                        a: ({ ...props }) => (
+                          <a
+                            {...props}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline font-medium"
+                          />
+                        ),
+                        p: ({ ...props }) => (
+                          <p {...props} className="mb-2 last:mb-0" />
+                        ),
+                        ul: ({ ...props }) => (
+                          <ul {...props} className="list-disc ml-4 my-2" />
+                        ),
+                        li: ({ ...props }) => (
+                          <li {...props} className="mb-1" />
+                        ),
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words">
+                      {message.content}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

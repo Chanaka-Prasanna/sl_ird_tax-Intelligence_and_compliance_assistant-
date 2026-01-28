@@ -25,3 +25,36 @@ body {
     text-wrap: balance;
   }
 }
+
+/* Markdown styling */
+.prose {
+  max-width: none;
+}
+
+.prose p {
+  margin-bottom: 0.5rem;
+}
+
+.prose ul {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose a {
+  color: #3b82f6;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.prose a:hover {
+  color: #2563eb;
+}
+
+.dark .prose a {
+  color: #60a5fa;
+}
+
+.dark .prose a:hover {
+  color: #93c5fd;
+}
