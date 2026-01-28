@@ -23,6 +23,20 @@ REWRITE_PROMPT = (
     "\n ------- \n"
     "{question}"
     "\n ------- \n"
+    "IMPORTANT: If the question contains UPPERCASE words or acronyms (like SET, VAT, PAYE, WHT, etc.), "
+    "these are likely tax-related acronyms. Try to expand them to their full form if you know it:\n"
+    "- SET = Statement of Estimated Tax Payable\n"
+    "- VAT = Value Added Tax\n"
+    "- PAYE = Pay As You Earn\n"
+    "- WHT = Withholding Tax\n"
+    "- APIT = Advanced Personal Income Tax\n"
+    "- ESC = Economic Service Charge\n"
+    "- NBT = Nation Building Tax\n"
+    "- SVAT = Simplified Value Added Tax\n"
+    "- TIN = Tax Identification Number\n"
+    "\n"
+    "Include BOTH the acronym AND the full form in your improved question to ensure better search results.\n"
+    "For example: 'SET exemptions' should become 'Statement of Estimated Tax Payable (SET) exemptions'\n\n"
     "Formulate an improved question:"
 )
 
@@ -131,10 +145,44 @@ def generate_query_or_respond(state: MessagesState):
     """Call the model to generate a response based on the current state. Given
     the question, it will decide to retrieve using the retriever tool, or simply respond to the user.
     """
+    print("\n" + "="*80)
+    print("[NODE: generate_query_or_respond] Started")
+    print("="*80)
+    print(f"[generate_query_or_respond] Number of messages in state: {len(state['messages'])}")
+    print(f"[generate_query_or_respond] Latest message: {state['messages'][-1].content[:100]}..." if state['messages'] else "No messages")
+    
+    messages = state["messages"].copy()
+    
+    # Check if the last message is an AIMessage (from rewrite_question node)
+    last_message = messages[-1] if messages else None
+    is_from_rewrite = last_message and hasattr(last_message, 'type') and last_message.type == 'ai'
+    
+    if is_from_rewrite:
+        # This is from rewrite_question - convert to HumanMessage and add instruction to be direct
+        rewritten_question = last_message.content
+        messages = messages[:-1]  # Remove the AIMessage
+        
+        # Add the rewritten question as HumanMessage with instruction
+        messages.append(HumanMessage(content=(
+            f"{rewritten_question}\n\n"
+            "[SYSTEM: The retrieved documents were not relevant to the user's question. "
+            "If you need clarification, explain briefly why you need it (e.g., 'I searched the tax documents but couldn't find relevant information about X because...') "
+            "then ask the user directly. Do not thank or use pleasantries. Be helpful and concise.]"
+        )))
+        print(f"[generate_query_or_respond] Detected rewritten question from internal node - converted to HumanMessage with instruction")
+    
     response = (
         model
-        .bind_tools([retriever_tool]).invoke(state["messages"])  
+        .bind_tools([retriever_tool]).invoke(messages)  
     )
+    
+    print(f"[generate_query_or_respond] Response type: {type(response)}")
+    print(f"[generate_query_or_respond] Has tool calls: {hasattr(response, 'tool_calls') and bool(response.tool_calls)}")
+    if hasattr(response, 'tool_calls') and response.tool_calls:
+        print(f"[generate_query_or_respond] Tool calls: {[tc.get('name', 'unknown') for tc in response.tool_calls]}")
+    print(f"[generate_query_or_respond] Response content preview: {response.content[:100] if response.content else 'Empty'}...")
+    print("[NODE: generate_query_or_respond] Completed\n")
+    
     return {"messages": [response]}
 
 
@@ -142,11 +190,21 @@ def grade_documents(
     state: MessagesState,
 ) -> Literal["generate_answer", "rewrite_question"]:
     """Determine whether the retrieved documents are relevant to the question."""
+    print("\n" + "="*80)
+    print("[NODE: grade_documents] Started")
+    print("="*80)
+    
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
     context = messages[-1].content
+    
+    print(f"[grade_documents] Question: {question[:100]}...")
+    print(f"[grade_documents] Context length: {len(context)} characters")
+    print(f"[grade_documents] Context preview: {context[:150]}...")
 
     prompt = GRADE_PROMPT.format(question=question, context=context)
+    print(f"[grade_documents] Grading relevance...")
+    
     response = (
         model
         .with_structured_output(GradeDocuments).invoke(  
@@ -154,29 +212,60 @@ def grade_documents(
         )
     )
     score = response.binary_score
+    
+    print(f"[grade_documents] Relevance score: {score}")
 
     if score == "yes":
+        print("[grade_documents] Decision: Proceeding to generate_answer")
+        print("[NODE: grade_documents] Completed\n")
         return "generate_answer"
     else:
+        print("[grade_documents] Decision: Proceeding to rewrite_question")
+        print("[NODE: grade_documents] Completed\n")
         return "rewrite_question"
     
 
 def rewrite_question(state: MessagesState):
     """Rewrite the original user question."""
+    print("\n" + "="*80)
+    print("[NODE: rewrite_question] Started")
+    print("="*80)
+    
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
+    
+    print(f"[rewrite_question] Original question: {question}")
+    
     prompt = REWRITE_PROMPT.format(question=question)
     response = model.invoke([{"role": "user", "content": prompt}])
-    return {"messages": [HumanMessage(content=response.content)]}
+    
+    print(f"[rewrite_question] Rewritten question: {response.content}")
+    print("[NODE: rewrite_question] Completed\n")
+    
+    # Return as AIMessage so generate_query_or_respond can detect this is from internal node
+    return {"messages": [AIMessage(content=response.content)]}
 
 def generate_answer(state: MessagesState):
     """Generate an answer with structured output."""
+    print("\n" + "="*80)
+    print("[NODE: generate_answer] Started")
+    print("="*80)
+    
     messages = state["messages"]
     question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
     context = messages[-1].content
+    
+    print(f"[generate_answer] Question: {question[:100]}...")
+    print(f"[generate_answer] Context length: {len(context)} characters")
+    print(f"[generate_answer] Generating structured answer...")
+    
     prompt = GENERATE_PROMPT.format(question=question, context=context)
     
     structured_response = model.with_structured_output(StructuredAnswer).invoke([{"role": "user", "content": prompt}])
+    
+    print(f"[generate_answer] Content length: {len(structured_response.content)} characters")
+    print(f"[generate_answer] Number of sources: {len(structured_response.sources)}")
+    print(f"[generate_answer] Content preview: {structured_response.content[:200]}...")
     
     formatted_content = structured_response.content + "\n\n**Sources:**\n\n"
     
@@ -198,7 +287,16 @@ def generate_answer(state: MessagesState):
                     f"[{idx}]- [{source.document_name}]({source.source_url}) - Page {source.page_number}\n"
                 )
     
+    print(f"[generate_answer] Unique sources after deduplication: {len(formatted_sources)}")
+    print("[generate_answer] Sources:")
+    for source in formatted_sources[:3]:  # Print first 3 sources
+        print(f"  - {source.strip()}")
+    if len(formatted_sources) > 3:
+        print(f"  ... and {len(formatted_sources) - 3} more")
+    
     formatted_content += "\n".join(formatted_sources)
+    
+    print("[NODE: generate_answer] Completed\n")
     
     return {"messages": [AIMessage(content=formatted_content)]}
 
