@@ -37,11 +37,16 @@ async def chat(request: ChatRequest):
     config: RunnableConfig = {"configurable": {"thread_id": request.thread_id}}
     result = graph.invoke({"messages": [{"role": "user", "content": request.message}]}, config=config)
     
-    # Extract the last AI message
+    # Extract the last AI message (excluding tool messages and messages with tool calls)
     messages = result.get("messages", [])
     ai_response = ""
     for msg in reversed(messages):
-        if hasattr(msg, 'content') and msg.content:
+        # Only consider AIMessage types that don't have tool calls (internal reasoning)
+        if (hasattr(msg, '__class__') and 
+            msg.__class__.__name__ == 'AIMessage' and 
+            hasattr(msg, 'content') and 
+            msg.content and
+            (not hasattr(msg, 'tool_calls') or not msg.tool_calls)):
             ai_response = msg.content
             break
     

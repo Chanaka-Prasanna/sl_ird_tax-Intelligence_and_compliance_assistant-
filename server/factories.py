@@ -42,7 +42,7 @@ class EmbeddingFactory:
 
 class PDFDocumentLoader(DocumentLoader):
     def load(self, file_path: str, source_url: str) -> List:
-        loader = PyMuPDFLoader(file_path, mode='page')
+        loader = PyMuPDFLoader(file_path, mode='page', extract_tables="markdown")
         docs = loader.load()
         for doc in docs:
             doc.metadata['source_url'] = source_url

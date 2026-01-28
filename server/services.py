@@ -88,7 +88,7 @@ class UploadService:
 
 def create_ingestion_service() -> DocumentIngestionService:
     document_loader = DocumentLoaderFactory.create_loader("pdf")
-    text_splitter = TextSplitterFactory.create_splitter("tiktoken", chunk_size=250, chunk_overlap=50)
+    text_splitter = TextSplitterFactory.create_splitter("tiktoken", chunk_size=500, chunk_overlap=75)
     vector_store = VectorStoreFactory.create_vector_store("chroma", "knowladge_collection", "./chroma_db")
     
     return DocumentIngestionService(document_loader, text_splitter, vector_store)
