@@ -31,14 +31,17 @@ def retrive_documents(query: str) -> str:
     retrived_content = ""
 
     for doc in docs:
-        # Extract clean document name (remove path and extension)
         source = doc.metadata.get('source', 'N/A')
         source_url = doc.metadata.get('source_url', '')
+        page_num = doc.metadata.get('page', 'N/A')
+        
         if source != 'N/A':
-            # Get filename without path and remove extension
             source = os.path.splitext(os.path.basename(source))[0]
         
-        retrived_content += f"Document Content: \n {doc.page_content}\n\n Metadata:\n page: {doc.metadata.get('page','N/A')} \n source: {source} \n source_url: {source_url}\n\n"
+        if page_num != 'N/A' and isinstance(page_num, int):
+            page_num = page_num + 1
+        
+        retrived_content += f"Document Content: \n {doc.page_content}\n\n Metadata:\n page: {page_num} \n source: {source} \n source_url: {source_url}\n\n"
 
     return retrived_content
 

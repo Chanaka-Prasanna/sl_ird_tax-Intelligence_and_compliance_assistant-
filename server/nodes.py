@@ -27,30 +27,67 @@ REWRITE_PROMPT = (
 )
 
 GENERATE_PROMPT = (
-    "You are an assistant for question-answering tasks. "
-    "Use the following pieces of retrieved context to answer the question. "
-    "If you don't know the answer, just say that you don't know. "
+    "You are an assistant for question-answering tasks about tax regulations and compliance. "
+    "CRITICAL RULES:\n"
+    "1. Answer ONLY based on the retrieved context provided below - do not use external knowledge\n"
+    "2. If the context does not contain the answer, clearly state: 'I don't have this information in the available documents'\n"
+    "3. NEVER provide speculative, interpretative, or advisory language\n"
+    "4. Present facts exactly as stated in the source documents without adding personal opinions or recommendations\n"
+    "5. If tables are present in the context, reproduce them as markdown tables to maintain clarity\n"
+    "6. If the user explicitly asks to compare across different years or documents, analyze and compare the information from multiple sources\n"
+    "7. Only provide comparisons when explicitly requested by the user - otherwise focus on answering the specific question\n\n"
     "Provide a comprehensive and descriptive answer with sufficient detail to fully address the user's query. "
     "Include relevant examples, explanations, and specific details from the context. "
     "Adjust the length and depth of your answer based on the complexity of the question.\n\n"
+    "CITATION USAGE RULES IN YOUR ANSWER:\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "✓ CORRECT: 'The following rates apply [1]:'\n"
+    "  - Rate 1\n"
+    "  - Rate 2\n"
+    "  - Rate 3\n\n"
+    "✗ WRONG: DO NOT DO THIS:\n"
+    "  - Rate 1 [1]\n"
+    "  - Rate 2 [1]\n"
+    "  - Rate 3 [1]\n\n"
+    "RULE: Place citations ONLY at section headings or topic introductions, NEVER after individual list items.\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     "Question: {question} \n\n"
     "Context: {context}\n\n"
-    "IMPORTANT: At the end of your answer, provide citations in markdown format.\n"
-    "For each citation, create a clickable link using this exact format:\n"
-    "• Source: [Document Name](actual_url_here) – Page X - Section Title\n\n"
+    "══════════════════════════════════════════════\n"
+    "SOURCES SECTION FORMATTING (CRITICAL)\n"
+    "══════════════════════════════════════════════\n\n"
+    "After your answer, create a sources section using this EXACT format:\n\n"
+    "**Sources:**\n\n"
+    "[1]- [Document Name](actual_url_here) - Page X - Section Title\n\n"
+    "[2]- [Document Name](actual_url_here) - Page Y - Section Title\n\n"
+    "FORMAT RULES:\n"
+    "• Start with [number]- (bracket number bracket dash)\n"
+    "• Document name must be clickable: [Document Name](url)\n"
+    "• Use single dash - between elements\n"
+    "• Format: [X]- [Name](url) - Page Y - Section (Section is optional)\n"
+    "• Each citation on a new line with blank line after it\n"
+    "• NO duplicates - each unique source listed only once\n\n"
+    "EXAMPLE:\n"
+    "[1]- [Tax Guide 2023](https://ird.gov.lk/tax2023.pdf) - Page 15 - 12.2 Company Tax Rates\n\n"
+    "[2]- [Corporate Tax Manual](https://ird.gov.lk/manual.pdf) - Page 42\n\n"
     "Instructions for creating citations:\n"
-    "1. Extract the 'source_url' value from the metadata and use it as the actual URL in the markdown link\n"
-    "2. Extract the page number from the metadata\n"
-    "3. Carefully examine the retrieved context and extract the EXACT section title or heading as it appears in the document\n"
-    "4. Include section numbers if present (e.g., '12.2 Company Tax Rates', '3.1.5 Exemptions', '2 Overview')\n"
-    "5. Look for text that appears as headings, typically at the start of paragraphs or in bold/larger font\n"
-    "6. If multiple section numbers exist, use the most specific one related to your answer\n"
-    "7. If no clear section title exists, use a brief descriptive phrase about the topic\n\n"
-    "Examples:\n"
-    "- If context contains '12.2 Company Tax Rates' as a heading, write: • Source: [Tax Guide](https://example.com/tax.pdf) – Page 15 - 12.2 Company Tax Rates\n"
-    "- If context shows '3.1.5 Exemptions for Non-Profits', write: • Source: [Tax Manual](https://example.com/manual.pdf) – Page 42 - 3.1.5 Exemptions for Non-Profits\n\n"
-    "DO NOT write (source_url) literally - use the ACTUAL URL value from the metadata.\n"
-    "Format your entire answer in markdown with proper clickable links."
+    "1. Extract 'source_url' from metadata - use this as the clickable URL\n"
+    "2. Extract clean document name from 'source' metadata (remove path and .pdf extension)\n"
+    "3. Extract page number from metadata\n"
+    "4. Extract EXACT section title from document context (optional if not clear)\n"
+    "5. Include section numbers if present (e.g., '12.2 Company Tax Rates')\n"
+    "6. Each citation must be UNIQUE - check for duplicates before listing\n"
+    "7. Put a blank line after EACH citation\n\n"
+    "VERIFICATION CHECKLIST:\n"
+    "□ Are citations only at headings, NOT on every list item?\n"
+    "□ Is format [X]- [Name](url) - Page Y - Section?\n"
+    "□ Is document name clickable with actual URL?\n"
+    "□ Is each citation on its own line with blank line after?\n"
+    "□ Are all sources unique with NO duplicates?\n\n"
+    "MANDATORY DISCLAIMER: End your response with:\n"
+    "---\n"
+    "*Disclaimer: This response is based solely on IRD-published documents and is not professional tax advice. "
+    "Please consult a qualified tax professional for personalized guidance.*"
 )
 
 class GradeDocuments(BaseModel):  
@@ -79,8 +116,9 @@ def grade_documents(
     state: MessagesState,
 ) -> Literal["generate_answer", "rewrite_question"]:
     """Determine whether the retrieved documents are relevant to the question."""
-    question = state["messages"][0].content
-    context = state["messages"][-1].content
+    messages = state["messages"]
+    question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
+    context = messages[-1].content
 
     prompt = GRADE_PROMPT.format(question=question, context=context)
     response = (
@@ -100,15 +138,16 @@ def grade_documents(
 def rewrite_question(state: MessagesState):
     """Rewrite the original user question."""
     messages = state["messages"]
-    question = messages[0].content
+    question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
     prompt = REWRITE_PROMPT.format(question=question)
     response = model.invoke([{"role": "user", "content": prompt}])
     return {"messages": [HumanMessage(content=response.content)]}
 
 def generate_answer(state: MessagesState):
     """Generate an answer."""
-    question = state["messages"][0].content
-    context = state["messages"][-1].content
+    messages = state["messages"]
+    question = next((m.content for m in reversed(messages) if hasattr(m, 'type') and m.type == 'human'), messages[0].content)
+    context = messages[-1].content
     prompt = GENERATE_PROMPT.format(question=question, context=context)
     response = model.invoke([{"role": "user", "content": prompt}])
     return {"messages": [response]}
