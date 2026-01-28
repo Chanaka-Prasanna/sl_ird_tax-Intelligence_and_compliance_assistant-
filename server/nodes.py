@@ -6,6 +6,7 @@ from langchain.messages import HumanMessage
 from langchain.chat_models import init_chat_model
 from tools import retriever_tool
 
+load_dotenv()
 model = init_chat_model("google_genai:gemini-2.5-flash-lite", temperature=0)
 
 GRADE_PROMPT = (
@@ -29,15 +30,25 @@ GENERATE_PROMPT = (
     "You are an assistant for question-answering tasks. "
     "Use the following pieces of retrieved context to answer the question. "
     "If you don't know the answer, just say that you don't know. "
-    "Use three sentences maximum and keep the answer concise.\n\n"
+    "Provide a comprehensive and descriptive answer with sufficient detail to fully address the user's query. "
+    "Include relevant examples, explanations, and specific details from the context. "
+    "Adjust the length and depth of your answer based on the complexity of the question.\n\n"
     "Question: {question} \n\n"
     "Context: {context}\n\n"
     "IMPORTANT: At the end of your answer, provide citations in markdown format.\n"
     "For each citation, create a clickable link using this exact format:\n"
-    "• Source: [Document Name](actual_url_here) – Page X\n\n"
-    "Extract the 'source_url' value from the metadata and use it as the actual URL in the markdown link.\n"
-    "Example: If source is 'Tax Guide' and source_url is 'https://example.com/tax.pdf', write:\n"
-    "• Source: [Tax Guide](https://example.com/tax.pdf) – Page 5\n\n"
+    "• Source: [Document Name](actual_url_here) – Page X - Section Title\n\n"
+    "Instructions for creating citations:\n"
+    "1. Extract the 'source_url' value from the metadata and use it as the actual URL in the markdown link\n"
+    "2. Extract the page number from the metadata\n"
+    "3. Carefully examine the retrieved context and extract the EXACT section title or heading as it appears in the document\n"
+    "4. Include section numbers if present (e.g., '12.2 Company Tax Rates', '3.1.5 Exemptions', '2 Overview')\n"
+    "5. Look for text that appears as headings, typically at the start of paragraphs or in bold/larger font\n"
+    "6. If multiple section numbers exist, use the most specific one related to your answer\n"
+    "7. If no clear section title exists, use a brief descriptive phrase about the topic\n\n"
+    "Examples:\n"
+    "- If context contains '12.2 Company Tax Rates' as a heading, write: • Source: [Tax Guide](https://example.com/tax.pdf) – Page 15 - 12.2 Company Tax Rates\n"
+    "- If context shows '3.1.5 Exemptions for Non-Profits', write: • Source: [Tax Manual](https://example.com/manual.pdf) – Page 42 - 3.1.5 Exemptions for Non-Profits\n\n"
     "DO NOT write (source_url) literally - use the ACTUAL URL value from the metadata.\n"
     "Format your entire answer in markdown with proper clickable links."
 )
