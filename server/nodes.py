@@ -55,10 +55,16 @@ GENERATE_PROMPT = (
     "   \n"
     "   STRICT RULES FOR SECTION EXTRACTION:\n"
     "   ════════════════════════════════════\n"
-    "   ✓ ONLY extract sections that appear in the MAIN BODY of the content\n"
-    "   ✓ Look for NUMBERED sections: '12.2', '12.3', '4.1', '13', '2.5.1'\n"
-    "   ✓ Look for TOPICAL HEADINGS that introduce specific topics\n"
-    "   ✓ Extract the FIRST few words after the section number (e.g., '12.2 For the second six months period')\n"
+    "   ✓ ONLY extract MAIN SECTION HEADINGS with DECIMAL NUMBERING: '12.2', '12.3', '4.1', '13', '2.5.1'\n"
+    "   ✓ Extract the section number and its title (e.g., '12.2 For the second six months period')\n"
+    "   ✓ Valid section patterns: '1.', '2.3', '12.3.1', 'Section 5', 'Part III'\n"
+    "   \n"
+    "   ✗ NEVER extract LIST ITEMS as sections:\n"
+    "   • Items starting with (a), (b), (c), (d), etc. - these are SUB-POINTS, not sections\n"
+    "   • Items starting with (i), (ii), (iii), (iv), etc. - these are SUB-POINTS, not sections\n"
+    "   • Items starting with (1), (2), (3), etc. in parentheses - these are LIST ITEMS\n"
+    "   • Bullet points or dash items\n"
+    "   • Individual tax rates or percentages (e.g., '24% Tax Rate')\n"
     "   \n"
     "   ✗ NEVER extract:\n"
     "   • Page headers (text that appears at top of page repeatedly)\n"
@@ -78,6 +84,14 @@ GENERATE_PROMPT = (
     "   EXAMPLE OF WRONG EXTRACTION:\n"
     "   DON'T extract: 'GUIDE TO CORPORATE RETURN OF INCOME TAX- YEAR OF ASSESSMENT – 2022/2023'\n"
     "   This is a page header/document title, NOT a section!\n"
+    "   \n"
+    "   DON'T extract: '(b) Business of export of goods'\n"
+    "   This is a LIST ITEM under a section, NOT a section heading!\n"
+    "   \n"
+    "   DON'T extract: '(ii) 24% Tax Rate'\n"
+    "   This is a LIST ITEM, NOT a section heading!\n"
+    "   \n"
+    "   Instead, find the PARENT SECTION that contains these list items (e.g., '12. Tax Rates' or '5.2 Export Income')\n"
     "   \n"
     "   If you cannot find a clear section heading in the actual content, leave the section field empty.\n"
     "5. NO DUPLICATES - each unique source (document + page + section) should appear only once\n\n"
@@ -102,7 +116,7 @@ class Source(BaseModel):
     document_name: str = Field(description="Clean document name without path or extension")
     source_url: str = Field(description="The actual URL from metadata")
     page_number: int = Field(description="Page number from metadata")
-    section: str = Field(description="Section number (e.g., '12.3'), section title, or both together (e.g., '12.3 Company Tax Rates'). Leave empty if not clear.")
+    section: str = Field(description="MAIN SECTION HEADING ONLY (e.g., '12.3 Dividend', '13. Payment of tax'). NEVER use list items like (a), (b), (i), (ii). Leave empty if no clear section heading.")
 
 class StructuredAnswer(BaseModel):
     """Structured answer with content and sources."""
