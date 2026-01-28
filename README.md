@@ -301,13 +301,13 @@ Invoke-RestMethod -Uri "http://localhost:8000/chat" `
 
 ### Node Descriptions
 
-| Node                        | Description                                                  |
-| --------------------------- | ------------------------------------------------------------ |
-| `generate_query_or_respond` | Decides whether to search documents or respond directly. Includes conversation summary in context if available. |
-| `retrieve`                  | Searches ChromaDB with query expansion for tax acronyms      |
-| `grade_documents`           | Checks if retrieved documents are relevant to the question   |
-| `generate_answer`           | Creates structured response with citations                   |
-| `rewrite_question`          | Improves the query and retries if documents are not relevant |
+| Node                        | Description                                                                                                      |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `generate_query_or_respond` | Decides whether to search documents or respond directly. Includes conversation summary in context if available.  |
+| `retrieve`                  | Searches ChromaDB with query expansion for tax acronyms                                                          |
+| `grade_documents`           | Checks if retrieved documents are relevant to the question                                                       |
+| `generate_answer`           | Creates structured response with citations                                                                       |
+| `rewrite_question`          | Improves the query and retries if documents are not relevant                                                     |
 | `summarize_conversation`    | Creates/extends conversation summary when message count exceeds 6, removes older messages to manage context size |
 
 ---
@@ -360,18 +360,21 @@ Answers include:
 The system automatically manages long conversations:
 
 **Automatic Summarization:**
+
 - When a conversation exceeds 6 messages, the system creates a summary
 - Summary captures key questions, topics, and information discussed
 - Older messages are removed while preserving the last 2 for immediate context
 - Summaries are extended (not recreated) as conversations continue
 
 **Benefits:**
+
 - **Cost efficiency:** Reduces token usage in long conversations
 - **Performance:** Faster response times with smaller context windows
 - **Context preservation:** Maintains conversation history without keeping all messages
 - **Seamless UX:** Automatic process, no user intervention required
 
 **Example:**
+
 ```
 Message 1-6: Full conversation history maintained
 Message 7+:  Summary + last 2 messages kept, older messages removed
